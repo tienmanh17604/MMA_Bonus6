@@ -16,6 +16,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
+  updateEmail,
 } from "firebase/auth";
 
 import {
@@ -28,8 +29,6 @@ import {
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 
-import { auth, db } from "./firebaseConfig";
-
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -38,6 +37,9 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
+import { auth, db } from "./firebaseConfig";
+
 
 export default function App() {
 
@@ -72,8 +74,13 @@ export default function App() {
 
     const subscription =
       Notifications.addNotificationReceivedListener(
-        (notification) => {
-          console.log(notification);
+        notification => {
+
+          console.log(
+            "Notification:",
+            notification
+          );
+
         }
       );
 
@@ -118,7 +125,7 @@ export default function App() {
       console.log("TOKEN:", token);
 
 
-      Alert.alert("TOKEN", token);
+      /* Alert.alert("TOKEN", token); */
 
 
       setExpoToken(token);
@@ -131,49 +138,110 @@ export default function App() {
       );
     }
   }
-
-  const register = async () => {
-
+  const sendTestNotification = async () => {
+    if (!expoToken) {
+  Alert.alert(
+    "Thông báo",
+    "Chưa lấy được token"
+  );
+  return;
+}
     try {
 
-      const userCredential =
-        await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
+      const message = {
+        to: expoToken,
+        sound: "default",
+        title: "Firebase Assignment",
+        body: "Đây là thông báo thử nghiệm",
+        data: {
+          screen: "profile",
+        },
+      };
 
-      const user =
-        userCredential.user;
-
-      await setDoc(
-        doc(db, "users", user.uid),
+      await fetch(
+        "https://exp.host/--/api/v2/push/send",
         {
-          email,
-          phone,
-          address,
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Accept-encoding": "gzip, deflate",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(message),
         }
       );
 
       Alert.alert(
-        "Thành công",
-        "Đăng ký thành công"
+        "Success",
+        "Đã gửi notification"
       );
 
-      setScreen("login");
-
-      setPhone("");
-      setAddress("");
-
     } catch (error) {
+
+      Alert.alert(
+        "Error",
+        error.message
+      );
+
+    }
+  };
+
+  const register = async () => {
+  try {
+
+    const userCredential =
+      await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+    const user = userCredential.user;
+
+    await setDoc(
+      doc(db, "users", user.uid),
+      {
+        email,
+        phone,
+        address,
+      }
+    );
+
+    Alert.alert(
+      "Thành công",
+      "Đăng ký thành công"
+    );
+
+    setScreen("login");
+
+    setEmail("");
+    setPassword("");
+    setPhone("");
+    setAddress("");
+
+  } catch (error) {
+
+    if (
+      error.code ===
+      "auth/email-already-in-use"
+    ) {
+
+      Alert.alert(
+        "Thông báo",
+        "Email đã tồn tại"
+      );
+
+    } else {
 
       Alert.alert(
         "Lỗi",
         error.message
       );
-    }
-  };
 
+    }
+
+  }
+};
   const login = async () => {
 
     try {
@@ -217,52 +285,106 @@ export default function App() {
 
     } catch (error) {
 
+  console.log(error.code);
+
+  if (
+    error.code ===
+    "auth/invalid-credential"
+  ) {
+
+    Alert.alert(
+      "Thông báo",
+      "Sai email hoặc mật khẩu"
+    );
+
+  } else {
+
+    Alert.alert(
+      "Lỗi",
+      error.message
+    );
+
+  }
+}
+    };
+
+const changeEmail = async () => {
+  try {
+
+    if (!newEmail) {
+      Alert.alert(
+        "Thông báo",
+        "Nhập email mới"
+      );
+      return;
+    }
+
+    const user = auth.currentUser;
+
+    if (!user) {
       Alert.alert(
         "Lỗi",
-        error.message
+        "Chưa đăng nhập"
       );
+      return;
     }
-  };
 
-  const changeEmail = async () => {
+    // Đổi email trong Firebase Authentication
+    await updateEmail(
+      user,
+      newEmail
+    );
 
-    try {
-
-      if (!newEmail) {
-
-        Alert.alert(
-          "Thông báo",
-          "Nhập email mới"
-        );
-
-        return;
+    // Đổi email trong Firestore
+    await updateDoc(
+      doc(db, "users", user.uid),
+      {
+        email: newEmail,
       }
+    );
 
-      const user = auth.currentUser;
+    setEmail(newEmail);
+    setNewEmail("");
 
-      await updateDoc(
-        doc(db, "users", user.uid),
-        {
-          email: newEmail,
-        }
-      );
+    Alert.alert(
+      "Thành công",
+      "Đổi email thành công"
+    );
 
-      setEmail(newEmail);
-      setNewEmail("");
+  } catch (error) {
+
+    console.log(error.code);
+
+    if (
+      error.code ===
+      "auth/requires-recent-login"
+    ) {
 
       Alert.alert(
-        "Thành công",
-        "Đổi email thành công"
+        "Thông báo",
+        "Vui lòng đăng nhập lại trước khi đổi email"
       );
 
-    } catch (error) {
+    } else if (
+      error.code ===
+      "auth/email-already-in-use"
+    ) {
+
+      Alert.alert(
+        "Thông báo",
+        "Email đã tồn tại"
+      );
+
+    } else {
 
       Alert.alert(
         "Lỗi",
         error.message
       );
+
     }
-  };
+  }
+};
   const changePhone = async () => {
 
     try {
@@ -663,6 +785,20 @@ export default function App() {
           <Text style={styles.token}>
             {expoToken || "Đang lấy token..."}
           </Text>
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>
+            Test Notification
+          </Text>
+
+          <TouchableOpacity
+            style={styles.button}
+            onPress={sendTestNotification}
+          >
+            <Text style={styles.buttonText}>
+              Send Test Notification
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
